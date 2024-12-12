@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid black;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        button {
+            margin-top: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        label {
+            margin-right: 5px;
+        }
+    </style>
+    <!-- Include jsPDF library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.10/jspdf.plugin.autotable.min.js"></script>
+</head>
+<body>
+    <h1>User Management Dashboard</h1>
+    <label for="dbName">Database Name: </label>
+    <input type="text" id="dbName" placeholder="Enter database name" required>
+    <label for="numCols">Number of Columns: </label>
+    <input type="number" id="numCols" value="3" min="1">
+    <button onclick="createTable()">Create Table</button>
+
+    <div id="columnNames"></div>
+
+    <label for="numRows">Number of Rows: </label>
+    <input type="number" id="numRows" value="1" min="1">
+    <button onclick="generateInputFields()">Generate Inputs</button>
+
+    <div id="userInputs"></div>
+
+    <button onclick="insertData()">Insert Data</button>
+
+    <h3>Filter User Data</h3>
+    <div id="filterFields"></div>
+    <button onclick="selectData()">Select Data</button>
+
+    <h3>Update User Data</h3>
+    <label for="updateId">User ID to Update: </label>
+    <input type="number" id="updateId" required>
+    <div id="updateFields"></div>
+
+    <button onclick="generateUpdateFields()">Generate Update Fields</button>
+    <button onclick="updateData()">Update Data</button>
+
+    <h3>Delete User Data</h3>
+    <label for="deleteId">User ID to Delete: </label>
+    <input type="number" id="deleteId" required>
+    <button onclick="deleteData()">Delete Data</button>
+
+    <button onclick="openTable()">Open Table</button>
+    <button onclick="printTable()">Print Table as PDF</button>
+    <div id="result"></div>
+
+    <script>
+        const mockDatabase = [];
+        let idCounter = 1;
+        let columnNames = [];
+
+        function createTable() {
+            const numCols = document.getElementById('numCols').value;
+            const columnNamesDiv = document.getElementById('columnNames');
+            columnNamesDiv.innerHTML = '';
+            columnNames = [];
+
+            for (let i = 0; i < numCols; i++) {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = `Column ${i + 1} Name`;
+                input.id = `columnName${i}`;
+                input.required = true;
+                columnNamesDiv.appendChild(input);
+            }
+
+            const confirmColumnsButton = document.createElement('button');
+            confirmColumnsButton.innerText = 'Confirm Columns';
+            confirmColumnsButton.onclick = confirmColumnNames;
+            columnNamesDiv.appendChild(confirmColumnsButton);
+        }
+
+        function confirmColumnNames() {
+            const numCols = document.getElementById('numCols').value;
+
+            for (let i = 0; i < numCols; i++) {
+                const colName = document.getElementById(`columnName${i}`).value;
+                columnNames.push(colName);
+            }
+
+            document.getElementById('numRows').style.display = 'inline';
+            document.getElementById('userInputs').style.display = 'block';
+            generateFilterFields(); // Generate filter fields after confirming columns
+        }
+
+        function generateInputFields() {
+            const numRows = document.getElementById('numRows').value;
+            const userInputsDiv = document.getElementById('userInputs');
+            userInputsDiv.innerHTML = '';
+
+            for (let i = 0; i < numRows; i++) {
+                const rowDiv = document.createElement('div');
+                rowDiv.innerHTML = `<h3>User ${i + 1}</h3>`;
+
+                columnNames.forEach((col, colIndex) => {
+                    rowDiv.innerHTML += ` 
+                        <label>${col}: </label><input type="text" id="input${i}-${colIndex}" required>
+                    `;
+                });
+
+                rowDiv.innerHTML += `<br><br>`;
+                userInputsDiv.appendChild(rowDiv);
+            }
+        }
+
+        function generateFilterFields() {
+            const filterFieldsDiv = document.getElementById('filterFields');
+            filterFieldsDiv.innerHTML = '';
+
+            columnNames.forEach((col, colIndex) => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.placeholder = `Filter by ${col}`;
+                input.id = `filter${colIndex}`;
+                filterFieldsDiv.appendChild(input);
+            });
+        }
+
+        function mockApiResponse(action, method, data = null) {
+            let result = {};
+            switch(action) {
+                case 'insert':
+                    data.forEach(user => {
+                        user.id = idCounter++;
+                        mockDatabase.push(user);
+                    });
+                    result = { message: `${data.length} data entries inserted` };
+                    break;
+                case 'select':
+                    result = { data: mockDatabase };
+                    break;
+                case 'update':
+                    const updateIndex = mockDatabase.findIndex(user => user.id === data.id);
+                    if (updateIndex !== -1) {
+                        mockDatabase[updateIndex] = { ...mockDatabase[updateIndex], ...data };
+                        result = { message: 'Data updated' };
+                    } else {
+                        result = { error: 'User not found' };
+                    }
+                    break;
+                case 'delete':
+                    const deleteIndex = mockDatabase.findIndex(user => user.id === data.id);
+                    if (deleteIndex !== -1) {
+                        mockDatabase.splice(deleteIndex, 1);
+                        result = { message: 'Data deleted' };
+                    } else {
+                        result = { error: 'User not found' };
+                    }
+                    break;
+                default:
+                    result = { error: 'Invalid action' };
+            }
+            return result;
+        }
+
+        function insertData() {
+            const userData = [];
+            const numRows = document.getElementById('numRows').value;
+
+            for (let i = 0; i < numRows; i++) {
+                const user = {};
+                columnNames.forEach((col, colIndex) => {
+                    user[col] = document.getElementById(`input${i}-${colIndex}`).value;
+                });
+                userData.push(user);
+            }
+
+            const response = mockApiResponse('insert', 'POST', userData);
+            alert(response.message);
+            generateInputFields(); // Regenerate input fields after insertion
+        }
+
+        function selectData() {
+            const response = mockApiResponse('select', 'GET');
+            let filteredData = response.data;
+
+            // Apply filters based on user input
+            columnNames.forEach((col, colIndex) => {
+                const filterValue = document.getElementById(`filter${colIndex}`).value;
+
+                if (filterValue) {
+                    const operator = filterValue.charAt(0); // Get the first character as the operator
+                    const value = Number(filterValue.slice(1)); // Extract the number after the operator
+
+                    filteredData = filteredData.filter(user => {
+                        const userValue = Number(user[col]); // Convert user value to number for comparison
+                        switch (operator) {
+                            case '=':
+                                return userValue === value;
+                            case '<':
+                                return userValue < value;
+                            case '<=':
+                                return userValue <= value; // Less than or equal to
+                            case '>':
+                                return userValue > value;
+                            case '>=':
+                                return userValue >= value; // Greater than or equal to
+                            default:
+                                // If no operator, fallback to checking for string includes (default behavior)
+                                return String(user[col]).toLowerCase().includes(filterValue.toLowerCase());
+                        }
+                    });
+                }
+            });
+
+            if (filteredData.length > 0) {
+                let tableHeaders = columnNames.map(col => `<th>${col}</th>`).join('');
+                const table = `<table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            ${tableHeaders}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${filteredData.map(user => `
+                        <tr>
+                            <td>${user.id}</td>
+                            ${columnNames.map(col => `<td>${user[col]}</td>`).join('')}
+                        </tr>`).join('')}
+                    </tbody>
+                </table>`;
+                document.getElementById('result').innerHTML = table;
+            } else {
+                document.getElementById('result').innerHTML = '<p>No data found.</p>';
+            }
+        }
+
+        function generateUpdateFields() {
+            const updateId = document.getElementById('updateId').value;
+            const user = mockDatabase.find(user => user.id == updateId);
+            const updateFieldsDiv = document.getElementById('updateFields');
+            updateFieldsDiv.innerHTML = '';
+
+            if (user) {
+                columnNames.forEach((col, colIndex) => {
+                    updateFieldsDiv.innerHTML += `
+                        <label>${col}: </label>
+                        <input type="text" id="updateInput${colIndex}" value="${user[col]}" required>
+                    `;
+                });
+            } else {
+                updateFieldsDiv.innerHTML = '<p>User not found.</p>';
+            }
+        }
+
+        function updateData() {
+            const updateId = document.getElementById('updateId').value;
+            const updatedData = { id: Number(updateId) };
+
+            columnNames.forEach((col, colIndex) => {
+                updatedData[col] = document.getElementById(`updateInput${colIndex}`).value;
+            });
+
+            const response = mockApiResponse('update', 'PUT', updatedData);
+            alert(response.message);
+            generateUpdateFields(); // Regenerate update fields after update
+        }
+
+        function deleteData() {
+            const deleteId = document.getElementById('deleteId').value;
+            const response = mockApiResponse('delete', 'DELETE', { id: Number(deleteId) });
+            alert(response.message);
+        }
+
+        function openTable() {
+            const table = `<table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        ${columnNames.map(col => `<th>${col}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${mockDatabase.map(user => `
+                    <tr>
+                        <td>${user.id}</td>
+                        ${columnNames.map(col => `<td>${user[col]}</td>`).join('')}
+                    </tr>`).join('')}
+                </tbody>
+            </table>`;
+            document.getElementById('result').innerHTML = table;
+        }
+
+        function printTable() {
+    const dbName = document.getElementById('dbName').value;
+
+    if (!dbName) {
+        alert('Please enter a database name!');
+        return;
+    }
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const table = document.querySelector('table');
+
+    if (table) {
+        const columns = columnNames.map(col => ({ header: col, dataKey: col }));
+        const rows = Array.from(table.querySelectorAll('tbody tr')).map(row => {
+            const data = {};
+            const cells = row.querySelectorAll('td');
+            cells.forEach((cell, index) => {
+                if (index === 0) {
+                    data['ID'] = cell.textContent; // First cell as ID
+                } else {
+                    data[columnNames[index - 1]] = cell.textContent; // Remaining cells
+                }
+            });
+            return data;
+        });
+
+        // Generate the table in the PDF
+        window.jspdf.autoTable(doc, {
+            head: [columns.map(col => col.header)],
+            body: rows.map(row => Object.values(row)),
+        });
+
+        // Download the PDF with the database name as the filename
+        doc.save(`${dbName}.pdf`);
+    } else {
+        alert('No table to print!');
+    }
+}
+
+    </script>
+    <!-- Include jsPDF library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<!-- Include jsPDF AutoTable plugin -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.10/jspdf.plugin.autotable.min.js"></script>
+
+</body>
+</html>
